@@ -5,7 +5,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
 
-st.set_page_config(page_title="Quản Lý Thu Mua Vật Tư", layout="wide", page_icon="📦")
+st.set_page_config(page_title="Kid Vật Tư", layout="wide", page_icon="📦")
 
 # --- KẾT NỐI GOOGLE SHEETS BẰNG SECRETS ---
 @st.cache_resource
@@ -36,7 +36,7 @@ def clean_number(val):
     try: return float(val_str)
     except: return 0.0
 
-st.title("📦 App Quản Lý Vật Tư (Bản Online)")
+st.title("📦 App Mua Sắm Vật Tư (Bản Test)")
 st.markdown("---")
 
 tab1, tab2 = st.tabs(["📝 Nhập Hàng Mới", "📊 Lịch Sử Trực Tuyến"])
@@ -50,7 +50,7 @@ with tab1:
     with col1:
         ngay = st.date_input("Ngày mua", date.today())
     with col2:
-        loai = st.selectbox("Nguồn tiền", ["Công ty - Tiền túi", "Công ty - Tạm ứng", "Cá nhân"])
+        loai = st.selectbox("Nguồn tiền", ["Công ty-ỨNG", "VAY GIANG HỒ", "Cá nhân"])
     with col3:
         trang_thai = "Chờ thanh toán" if "Tiền túi" in loai else "Đã hoàn tất"
         st.info(f"Trạng thái: **{trang_thai}**")
@@ -64,7 +64,7 @@ with tab1:
             "Đơn giá": st.column_config.NumberColumn("Đơn giá", format="%f", min_value=0.0),
         })
 
-    if st.button("🚀 BẮN DỮ LIỆU LÊN GOOGLE SHEETS", type="primary", use_container_width=True):
+    if st.button("🚀 LƯU DỮ LIỆU", type="primary", use_container_width=True):
         valid_data = edited_df[edited_df['Tên vật tư'].str.strip() != ""].copy()
         if not valid_data.empty:
             try:
@@ -73,7 +73,7 @@ with tab1:
                 tong_tien = (valid_data['Số lượng'] * valid_data['Đơn giá']).sum()
                 
                 # Tạo Mã đơn hàng độc nhất theo giờ phút giây
-                trans_id = datetime.now().strftime("MD%Y%m%d%H%M%S")
+                trans_id = datetime.now().strftime("TV%d%m%H%M")
                 
                 # 1. Ghi lên sheet Transactions
                 ws_trans.append_row([trans_id, ngay.strftime("%Y-%m-%d"), loai, tong_tien, trang_thai])
