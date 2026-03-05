@@ -109,6 +109,7 @@ with tab2:
     st.write("---")
     if st.button("🔄 Tải Mới Dữ Liệu"):
         st.cache_resource.clear()
+        st.rerun() # Giúp app tải lại mượt hơn
         
     try:
         trans_data = ws_trans.get_all_records()
@@ -117,22 +118,42 @@ with tab2:
         if trans_data and mats_data:
             df_trans = pd.DataFrame(trans_data)
             df_mats = pd.DataFrame(mats_data)
-            df_trans['Ngày'] = pd.to_datetime(df_trans['Ngày']).dt.date
             
-            mask = (df_trans['Ngày'] >= start_date) & (df_trans['Ngày'] <= end_date)
-            df_trans_filtered = df_trans.loc[mask]
+            # Tự động tìm cột Ngày dù có dư khoảng trắng hay viết thường
+            ngay_col = next((c for c in df_trans.columns if c.strip().lower() == 'ngày'), None)
+            
+            if ngay_col:
+                df_trans[ngay_col] = pd.to_datetime(df_trans[ngay_col]).dt.date
+                mask = (df_trans[ngay_col] >= start_date) & (df_trans[ngay_col] <= end_date)
+                df_trans_filtered = df_trans.loc[mask]
+            else:
+                df_trans_filtered = df_trans
             
             if not df_trans_filtered.empty:
                 df_view = pd.merge(df_mats, df_trans_filtered, on='Mã Đơn', how='inner')
+                
+                # Tự động tìm cột Thành tiền để tính tổng
+                thanh_tien_col = next((c for c in df_view.columns if c.strip().lower() == 'thành tiền'), None)
+                tong_chi = df_view[thanh_tien_col].sum() if thanh_tien_col else 0
+                
                 m1, m2 = st.columns(2)
-                m1.metric(label="💰 TỔNG TIỀN ĐÃ CHI", value=f"{df_view['Thành tiền'].sum():,.0f} ₫")
+                m1.metric(label="💰 TỔNG TIỀN ĐÃ CHI", value=f"{tong_chi:,.0f} ₫")
                 m2.metric(label="📦 TỔNG SỐ MÓN", value=f"{len(df_view)} món")
                 
-                cols = ['Ngày', 'Nguồn Tiền', 'Tên vật tư', 'Quy cách', 'Số lượng', 'Đơn giá', 'Thành tiền', 'Nơi mua', 'Mã Đơn']
-                st.dataframe(df_view[cols], use_container_width=True,
-                    column_config={"Số lượng": st.column_config.NumberColumn(format="%,.1f"),
-                                   "Đơn giá": st.column_config.NumberColumn(format="%,.0f ₫"),
-                                   "Thành tiền": st.column_config.NumberColumn(format="%,.0f ₫")})
+                # Cấu hình tự động nhận diện định dạng cột số
+                col_config = {}
+                for c in df_view.columns:
+                    c_lower = c.strip().lower()
+                    if c_lower == 'số lượng':
+                        col_config[c] = st.column_config.NumberColumn(format="%,.1f")
+                    elif c_lower in ['đơn giá', 'thành tiền', 'tổng tiền']:
+                        col_config[c] = st.column_config.NumberColumn(format="%,.0f ₫")
+                
+                # Lọc bỏ một số cột thừa thãi khi hiển thị nếu muốn
+                cols_to_drop = [c for c in ['id', 'ID'] if c in df_view.columns]
+                df_display = df_view.drop(columns=cols_to_drop)
+                        
+                st.dataframe(df_display, use_container_width=True, column_config=col_config)
             else:
                 st.info("Không có giao dịch nào.")
         else:
