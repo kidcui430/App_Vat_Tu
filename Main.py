@@ -7,11 +7,46 @@ import json
 
 st.set_page_config(page_title="Quản Lý Thu Mua Vật Tư", layout="wide", page_icon="📦")
 
-# --- KHỞI TẠO BIẾN ĐỂ LÀM MỚI BẢNG NHẬP LIỆU ---
+# ==========================================
+# 🛑 HỆ THỐNG BẢO MẬT ĐĂNG NHẬP (MỚI)
+# ==========================================
+def check_password():
+    """Hàm kiểm tra mật khẩu trước khi cho phép vào App"""
+    def password_entered():
+        """Kiểm tra pass người dùng nhập có khớp với pass trong Secrets không"""
+        if st.session_state["password"] == st.secrets["APP_PASSWORD"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Xóa pass khỏi bộ nhớ tạm cho an toàn
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        # Lần đầu mở link -> Bắt nhập Pass
+        st.markdown("### 🔐 HỆ THỐNG QUẢN LÝ NỘI BỘ")
+        st.text_input("Vui lòng nhập mật khẩu để truy cập:", type="password", on_change=password_entered, key="password")
+        return False
+    elif not st.session_state["password_correct"]:
+        # Nhập sai Pass -> Báo lỗi và bắt nhập lại
+        st.markdown("### 🔐 HỆ THỐNG QUẢN LÝ NỘI BỘ")
+        st.text_input("Vui lòng nhập mật khẩu để truy cập:", type="password", on_change=password_entered, key="password")
+        st.error("❌ Mật khẩu không đúng. Vui lòng thử lại!")
+        return False
+    else:
+        # Pass đúng -> Cấp quyền vào trong
+        return True
+
+# NẾU CHƯA ĐĂNG NHẬP THÌ APP SẼ DỪNG NGAY TẠI ĐÂY (KHÔNG CHẠY XUỐNG DƯỚI)
+if not check_password():
+    st.stop()
+
+
+# ==========================================
+# 🚀 PHẦN MỀM CHÍNH (CHỈ HIỂN THỊ KHI ĐÃ NHẬP ĐÚNG PASS)
+# ==========================================
+
 if 'form_key' not in st.session_state:
     st.session_state.form_key = 0
 
-# --- KẾT NỐI GOOGLE SHEETS BẰNG SECRETS ---
 @st.cache_resource
 def init_connection():
     creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"], strict=False)
@@ -26,14 +61,12 @@ try:
     ws_trans = db.worksheet("Transactions")
     ws_mats = db.worksheet("Materials")
 except Exception as e:
-    st.error("❌ Không thể kết nối Google Sheets. Hãy kiểm tra lại file Secrets hoặc Quyền chia sẻ.")
+    st.error("❌ Không thể kết nối Google Sheets. Hãy kiểm tra lại file Secrets.")
     st.stop()
 
-# --- HÀM ÉP SỐ ---
 def clean_number(val):
     if pd.isna(val) or val == "": return 0.0
     if isinstance(val, list): val = val[0] if len(val) > 0 else 0.0
-    # Xóa cả dấu phẩy, dấu chấm và chữ ₫ để tránh lỗi
     val_str = str(val).replace(',', '').replace('.', '').replace('₫', '').replace(' ', '')
     try: return float(val_str)
     except: return 0.0
@@ -43,12 +76,9 @@ st.markdown("---")
 
 tab1, tab2 = st.tabs(["📝 Nhập Hàng Mới", "📊 Lịch Sử Trực Tuyến"])
 
-# ==========================================
-# TAB 1: NHẬP ĐƠN HÀNG MỚI
-# ==========================================
+# --- TAB 1: NHẬP ĐƠN HÀNG MỚI ---
 with tab1:
     st.subheader("1. Thông tin phiếu mua")
-    
     col1, col2 = st.columns(2)
     with col1:
         ngay = st.date_input("Ngày mua", date.today())
@@ -56,30 +86,19 @@ with tab1:
         loai = st.selectbox("Nguồn tiền", ["Công ty - Tiền túi", "Công ty - Tạm ứng", "Cá nhân"])
 
     st.subheader("2. Chi tiết vật tư")
-    
     df_vattu = pd.DataFrame([{'Tên vật tư': "", 'Quy cách': "Pcs", 'Số lượng': 0.0, 'Đơn giá': 0.0, 'Nơi mua': "", 'Ghi chú': ""}])
     
-    # BẢNG NHẬP LIỆU ĐÃ ĐƯỢC CHỈNH FORM SỐ CÓ DẤU PHẨY
     edited_df = st.data_editor(
-        df_vattu, 
-        num_rows="dynamic", 
-        use_container_width=True,
-        key=f"editor_{st.session_state.form_key}", # Gắn chìa khóa để Reset bảng
+        df_vattu, num_rows="dynamic", use_container_width=True, key=f"editor_{st.session_state.form_key}",
         column_config={
             "Tên vật tư": st.column_config.TextColumn("Tên vật tư", required=True),
-            "Quy cách": st.column_config.SelectboxColumn(
-                "Quy cách",
-                options=["Pcs", "KG", "Con", "Cái", "Bộ", "Mét", "Lít", "Hộp", "Thùng", "Cuộn", "Tấm", "Cặp", "Bao"],
-                required=True
-            ),
+            "Quy cách": st.column_config.SelectboxColumn("Quy cách", options=["Pcs", "KG", "Con", "Cái", "Bộ", "Mét", "Lít", "Hộp", "Thùng", "Cuộn", "Tấm", "Cặp", "Bao"], required=True),
             "Số lượng": st.column_config.NumberColumn("Số lượng", format="%,.1f", min_value=0.0),
-            "Đơn giá": st.column_config.NumberColumn("Đơn giá", format="%,.0f", min_value=0.0), # Đã thêm phân cách hàng nghìn
+            "Đơn giá": st.column_config.NumberColumn("Đơn giá", format="%,.0f", min_value=0.0),
         }
     )
 
-    # TẠO 2 NÚT BẤM (1 NÚT LƯU, 1 NÚT LÀM MỚI)
     btn_col1, btn_col2 = st.columns([3, 1])
-    
     with btn_col1:
         if st.button("🚀 LƯU DỮ LIỆU", type="primary", use_container_width=True):
             valid_data = edited_df[edited_df['Tên vật tư'].str.strip() != ""].copy()
@@ -90,7 +109,6 @@ with tab1:
                     tong_tien = (valid_data['Số lượng'] * valid_data['Đơn giá']).sum()
                     
                     trans_id = datetime.now().strftime("TV%d%m%H%M")
-                    
                     ws_trans.append_row([trans_id, ngay.strftime("%Y-%m-%d"), loai, tong_tien])
                     
                     mats_to_insert = []
@@ -98,31 +116,24 @@ with tab1:
                         thanh_tien = row['Số lượng'] * row['Đơn giá']
                         mats_to_insert.append([
                             trans_id, str(row['Tên vật tư']), str(row['Quy cách']), 
-                            row['Số lượng'], row['Đơn giá'], thanh_tien, 
-                            str(row['Nơi mua']), str(row['Ghi chú'])
+                            row['Số lượng'], row['Đơn giá'], thanh_tien, str(row['Nơi mua']), str(row['Ghi chú'])
                         ])
                     ws_mats.append_rows(mats_to_insert)
                     
                     st.success(f"🎉 Đã lưu Online thành công! (Mã đơn: {trans_id})")
-                    
-                    # CƠ CHẾ TỰ ĐỘNG DỌN SẠCH BẢNG SAU KHI LƯU THÀNH CÔNG
                     st.session_state.form_key += 1
                     st.rerun()
-                    
                 except Exception as e:
                     st.error(f"❌ Có lỗi khi lưu: {e}")
             else:
                 st.warning("⚠️ Bạn chưa nhập 'Tên vật tư'.")
                 
     with btn_col2:
-        # NÚT DỌN BẢNG BẰNG TAY (Khi đang nhập mà lỡ tay nhập sai quá nhiều)
         if st.button("🔄 LÀM MỚI BẢNG", use_container_width=True):
             st.session_state.form_key += 1
             st.rerun()
 
-# ==========================================
-# TAB 2: LỊCH SỬ ONLINE TỪ GOOGLE SHEETS
-# ==========================================
+# --- TAB 2: LỊCH SỬ ONLINE TỪ GOOGLE SHEETS ---
 with tab2:
     st.subheader("🔍 Lấy dữ liệu trực tiếp từ máy chủ Google")
     f_col1, f_col2 = st.columns(2)
@@ -155,7 +166,6 @@ with tab2:
             
             if not df_trans_filtered.empty:
                 df_view = pd.merge(df_mats, df_trans_filtered, on='Mã Đơn', how='inner')
-                
                 thanh_tien_col = next((c for c in df_view.columns if c.strip().lower() == 'thành tiền'), None)
                 tong_chi = df_view[thanh_tien_col].sum() if thanh_tien_col else 0
                 
@@ -166,14 +176,11 @@ with tab2:
                 col_config = {}
                 for c in df_view.columns:
                     c_lower = c.strip().lower()
-                    if c_lower == 'số lượng':
-                        col_config[c] = st.column_config.NumberColumn(format="%,.1f")
-                    elif c_lower in ['đơn giá', 'thành tiền', 'tổng tiền']:
-                        col_config[c] = st.column_config.NumberColumn(format="%,.0f ₫")
+                    if c_lower == 'số lượng': col_config[c] = st.column_config.NumberColumn(format="%,.1f")
+                    elif c_lower in ['đơn giá', 'thành tiền', 'tổng tiền']: col_config[c] = st.column_config.NumberColumn(format="%,.0f ₫")
                 
                 cols_to_drop = [c for c in ['id', 'ID', 'Trạng thái', 'Trạng Thái'] if c in df_view.columns]
                 df_display = df_view.drop(columns=cols_to_drop)
-                        
                 st.dataframe(df_display, use_container_width=True, column_config=col_config)
             else:
                 st.info("Không có giao dịch nào.")
