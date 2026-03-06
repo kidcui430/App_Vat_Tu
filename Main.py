@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
@@ -119,7 +119,9 @@ with tab1:
                     valid_data['Đơn giá'] = valid_data['Đơn giá'].apply(clean_number)
                     tong_tien = (valid_data['Số lượng'] * valid_data['Đơn giá']).sum()
                     
-                    trans_id = datetime.now().strftime("TV%d%m%H%M")
+                    now_vn = datetime.utcnow() + timedelta(hours=7)
+                    # 2. Tạo mã đơn: Thêm Giây (%S) vào cuối để đảm bảo dù bấm lưu liên tục cũng không bao giờ trùng mã
+                    trans_id = now_vn.strftime("TV%d%m%H%M%S")
                     ws_trans.append_row([trans_id, ngay.strftime("%Y-%m-%d"), loai, tong_tien])
                     
                     mats_to_insert = []
