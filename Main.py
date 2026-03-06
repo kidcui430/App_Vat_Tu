@@ -8,42 +8,34 @@ import json
 st.set_page_config(page_title="Quản Lý Thu Mua Vật Tư", layout="wide", page_icon="📦")
 
 # ==========================================
-# 🛑 HỆ THỐNG BẢO MẬT ĐĂNG NHẬP (MỚI)
+# 🛑 HỆ THỐNG BẢO MẬT ĐĂNG NHẬP
 # ==========================================
 def check_password():
-    """Hàm kiểm tra mật khẩu trước khi cho phép vào App"""
     def password_entered():
-        """Kiểm tra pass người dùng nhập có khớp với pass trong Secrets không"""
         if st.session_state["password"] == st.secrets["APP_PASSWORD"]:
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Xóa pass khỏi bộ nhớ tạm cho an toàn
+            del st.session_state["password"] 
         else:
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        # Lần đầu mở link -> Bắt nhập Pass
         st.markdown("### 🔐 HỆ THỐNG QUẢN LÝ NỘI BỘ")
         st.text_input("Vui lòng nhập mật khẩu để truy cập:", type="password", on_change=password_entered, key="password")
         return False
     elif not st.session_state["password_correct"]:
-        # Nhập sai Pass -> Báo lỗi và bắt nhập lại
         st.markdown("### 🔐 HỆ THỐNG QUẢN LÝ NỘI BỘ")
         st.text_input("Vui lòng nhập mật khẩu để truy cập:", type="password", on_change=password_entered, key="password")
         st.error("❌ Mật khẩu không đúng. Vui lòng thử lại!")
         return False
     else:
-        # Pass đúng -> Cấp quyền vào trong
         return True
 
-# NẾU CHƯA ĐĂNG NHẬP THÌ APP SẼ DỪNG NGAY TẠI ĐÂY (KHÔNG CHẠY XUỐNG DƯỚI)
 if not check_password():
     st.stop()
 
-
 # ==========================================
-# 🚀 PHẦN MỀM CHÍNH (CHỈ HIỂN THỊ KHI ĐÃ NHẬP ĐÚNG PASS)
+# 🚀 PHẦN MỀM CHÍNH 
 # ==========================================
-
 if 'form_key' not in st.session_state:
     st.session_state.form_key = 0
 
@@ -166,6 +158,15 @@ with tab2:
             
             if not df_trans_filtered.empty:
                 df_view = pd.merge(df_mats, df_trans_filtered, on='Mã Đơn', how='inner')
+                
+                # --- NÂNG CẤP TRỊ LỖI 'f' TẠI ĐÂY ---
+                # Quét qua toàn bộ cột, nếu là số lượng hoặc tiền thì tự động dọn rác và ép về kiểu số
+                for col in df_view.columns:
+                    col_lower = col.strip().lower()
+                    if col_lower in ['số lượng', 'đơn giá', 'thành tiền', 'tổng tiền']:
+                        df_view[col] = df_view[col].apply(clean_number)
+                # ------------------------------------
+
                 thanh_tien_col = next((c for c in df_view.columns if c.strip().lower() == 'thành tiền'), None)
                 tong_chi = df_view[thanh_tien_col].sum() if thanh_tien_col else 0
                 
