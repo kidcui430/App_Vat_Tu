@@ -5,6 +5,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
 import re  # <-- THƯ VIỆN BỘ LỌC SIÊU MẠNH
+import time  # Gọi thư viện thời gian (giống như lấy cái đồng hồ bấm giờ ra xài)
 
 st.set_page_config(page_title="Quản Lý Thu Mua Vật Tư", layout="wide", page_icon="📦")
 
@@ -93,7 +94,7 @@ with tab1:
     with col1:
         ngay = st.date_input("Ngày mua", date.today())
     with col2:
-        loai = st.selectbox("Nguồn tiền", ["Công ty - Tiền túi", "Công ty - Tạm ứng", "Cá nhân"])
+        loai = st.selectbox("Nguồn tiền", ["Tạm ứng", "Cá nhân"])
 
     st.subheader("2. Chi tiết vật tư")
     df_vattu = pd.DataFrame([{'Tên vật tư': "", 'Quy cách': "Pcs", 'Số lượng': 0.0, 'Đơn giá': 0.0, 'Nơi mua': "", 'Ghi chú': ""}])
@@ -129,8 +130,10 @@ with tab1:
                             row['Số lượng'], row['Đơn giá'], thanh_tien, str(row['Nơi mua']), str(row['Ghi chú'])
                         ])
                     ws_mats.append_rows(mats_to_insert)
+                    st.toast("Dữ liệu đã được bắn lên Google Sheets!", icon="🚀")
                     
                     st.success(f"🎉 Đã lưu Online thành công! (Mã đơn: {trans_id})")
+                    time.sleep(1.5)
                     st.session_state.form_key += 1
                     st.rerun()
                 except Exception as e:
