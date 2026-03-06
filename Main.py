@@ -4,6 +4,7 @@ from datetime import datetime, date
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
+import re  # <-- THƯ VIỆN BỘ LỌC SIÊU MẠNH
 
 st.set_page_config(page_title="Quản Lý Thu Mua Vật Tư", layout="wide", page_icon="📦")
 
@@ -56,10 +57,27 @@ except Exception as e:
     st.error("❌ Không thể kết nối Google Sheets. Hãy kiểm tra lại file Secrets.")
     st.stop()
 
+# --- HÀM ÉP SỐ CHỐNG LỖI 100% ---
 def clean_number(val):
-    if pd.isna(val) or val == "": return 0.0
-    if isinstance(val, list): val = val[0] if len(val) > 0 else 0.0
-    val_str = str(val).replace(',', '').replace('.', '').replace('₫', '').replace(' ', '')
+    if pd.isna(val) or str(val).strip() == "": return 0.0
+    if isinstance(val, (int, float)): return float(val)
+    
+    val_str = str(val)
+    # Hút bỏ sạch sẽ mọi chữ cái và ký tự lạ, chỉ giữ số, dấu phẩy, dấu chấm
+    val_str = re.sub(r'[^\d.,-]', '', val_str)
+    if not val_str: return 0.0
+    
+    # Xóa dấu phẩy phân cách
+    val_str = val_str.replace(',', '')
+    
+    # Xử lý thông minh dấu chấm của tiền Việt Nam (VD: 1.500.000 hoặc 50.000)
+    if val_str.count('.') > 1:
+        val_str = val_str.replace('.', '')
+    elif val_str.count('.') == 1:
+        # Nếu sau dấu chấm có đúng 3 số (nghĩa là ngàn đồng), thì xóa dấu chấm đi
+        if len(val_str.split('.')[-1]) == 3:
+            val_str = val_str.replace('.', '')
+            
     try: return float(val_str)
     except: return 0.0
 
@@ -125,9 +143,7 @@ with tab1:
             st.session_state.form_key += 1
             st.rerun()
 
-# ==========================================
-# TAB 2: LỊCH SỬ ONLINE TỪ GOOGLE SHEETS
-# ==========================================
+# --- TAB 2: LỊCH SỬ ONLINE TỪ GOOGLE SHEETS ---
 with tab2:
     st.subheader("🔍 Lấy dữ liệu trực tiếp từ máy chủ Google")
     f_col1, f_col2 = st.columns(2)
@@ -139,7 +155,7 @@ with tab2:
     st.write("---")
     if st.button("🔄 Tải Mới Dữ Liệu"):
         st.cache_resource.clear()
-        st.rerun() # Giúp app tải lại mượt hơn
+        st.rerun() 
         
     try:
         trans_data = ws_trans.get_all_records()
@@ -149,7 +165,6 @@ with tab2:
             df_trans = pd.DataFrame(trans_data)
             df_mats = pd.DataFrame(mats_data)
             
-            # Tự động tìm cột Ngày dù có dư khoảng trắng hay viết thường
             ngay_col = next((c for c in df_trans.columns if c.strip().lower() == 'ngày'), None)
             
             if ngay_col:
@@ -162,7 +177,13 @@ with tab2:
             if not df_trans_filtered.empty:
                 df_view = pd.merge(df_mats, df_trans_filtered, on='Mã Đơn', how='inner')
                 
-                # Tự động tìm cột Thành tiền để tính tổng
+                # --- ÉP KIỂU SỐ CHO TOÀN BỘ CỘT TIỀN / SỐ LƯỢNG TRƯỚC KHI TÍNH TỔNG ---
+                for col in df_view.columns:
+                    col_lower = col.strip().lower()
+                    if col_lower in ['số lượng', 'đơn giá', 'thành tiền', 'tổng tiền']:
+                        df_view[col] = df_view[col].apply(clean_number)
+                # ----------------------------------------------------------------------
+
                 thanh_tien_col = next((c for c in df_view.columns if c.strip().lower() == 'thành tiền'), None)
                 tong_chi = df_view[thanh_tien_col].sum() if thanh_tien_col else 0
                 
@@ -170,19 +191,14 @@ with tab2:
                 m1.metric(label="💰 TỔNG TIỀN ĐÃ CHI", value=f"{tong_chi:,.0f} ₫")
                 m2.metric(label="📦 TỔNG SỐ MÓN", value=f"{len(df_view)} món")
                 
-                # Cấu hình tự động nhận diện định dạng cột số
                 col_config = {}
                 for c in df_view.columns:
                     c_lower = c.strip().lower()
-                    if c_lower == 'số lượng':
-                        col_config[c] = st.column_config.NumberColumn(format="%,.1f")
-                    elif c_lower in ['đơn giá', 'thành tiền', 'tổng tiền']:
-                        col_config[c] = st.column_config.NumberColumn(format="%,.0f ₫")
+                    if c_lower == 'số lượng': col_config[c] = st.column_config.NumberColumn(format="%,.1f")
+                    elif c_lower in ['đơn giá', 'thành tiền', 'tổng tiền']: col_config[c] = st.column_config.NumberColumn(format="%,.0f ₫")
                 
-                # Lọc bỏ một số cột thừa thãi khi hiển thị nếu muốn
-                cols_to_drop = [c for c in ['id', 'ID'] if c in df_view.columns]
+                cols_to_drop = [c for c in ['id', 'ID', 'Trạng thái', 'Trạng Thái'] if c in df_view.columns]
                 df_display = df_view.drop(columns=cols_to_drop)
-                        
                 st.dataframe(df_display, use_container_width=True, column_config=col_config)
             else:
                 st.info("Không có giao dịch nào.")
