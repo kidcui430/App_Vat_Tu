@@ -4,8 +4,8 @@ from datetime import datetime, date, timedelta
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
-import re  # <-- THƯ VIỆN BỘ LỌC SIÊU MẠNH
-import time  # Gọi thư viện thời gian (giống như lấy cái đồng hồ bấm giờ ra xài)
+import re  
+import time  
 
 st.set_page_config(page_title="Quản Lý Thu Mua Vật Tư", layout="wide", page_icon="📦")
 
@@ -54,8 +54,9 @@ try:
     db = init_connection()
     ws_trans = db.worksheet("Transactions")
     ws_mats = db.worksheet("Materials")
+    ws_incomes = db.worksheet("Incomes") # KẾT NỐI DATA NGUỒN THU MỚI
 except Exception as e:
-    st.error("❌ Không thể kết nối Google Sheets. Hãy kiểm tra lại file Secrets.")
+    st.error("❌ Không thể kết nối Google Sheets. Hãy kiểm tra lại file Secrets và chắc chắn đã tạo sheet 'Incomes'.")
     st.stop()
 
 # --- HÀM ÉP SỐ CHỐNG LỖI 100% ---
@@ -64,37 +65,35 @@ def clean_number(val):
     if isinstance(val, (int, float)): return float(val)
     
     val_str = str(val)
-    # Hút bỏ sạch sẽ mọi chữ cái và ký tự lạ, chỉ giữ số, dấu phẩy, dấu chấm
     val_str = re.sub(r'[^\d.,-]', '', val_str)
     if not val_str: return 0.0
     
-    # Xóa dấu phẩy phân cách
     val_str = val_str.replace(',', '')
-    
-    # Xử lý thông minh dấu chấm của tiền Việt Nam (VD: 1.500.000 hoặc 50.000)
     if val_str.count('.') > 1:
         val_str = val_str.replace('.', '')
     elif val_str.count('.') == 1:
-        # Nếu sau dấu chấm có đúng 3 số (nghĩa là ngàn đồng), thì xóa dấu chấm đi
         if len(val_str.split('.')[-1]) == 3:
             val_str = val_str.replace('.', '')
             
     try: return float(val_str)
     except: return 0.0
 
-st.title("📦 App Quản Lý Vật Tư (Bản Online)")
+st.title("📦 App Quản Lý Thu - Chi Vật Tư")
 st.markdown("---")
 
-tab1, tab2 = st.tabs(["📝 Nhập Hàng Mới", "📊 Lịch Sử Trực Tuyến"])
+# CHIA THÀNH 3 TAB ĐỂ QUẢN LÝ CHUYÊN NGHIỆP HƠN
+tab1, tab2, tab3 = st.tabs(["📝 Lập Phiếu Chi (Mua hàng)", "💵 Nhập Nguồn Thu (Vào quỹ)", "📊 Báo Cáo Dòng Tiền"])
 
-# --- TAB 1: NHẬP ĐƠN HÀNG MỚI ---
+# ==========================================
+# --- TAB 1: NHẬP ĐƠN HÀNG MỚI (CHI) ---
+# ==========================================
 with tab1:
     st.subheader("1. Thông tin phiếu mua")
     col1, col2 = st.columns(2)
     with col1:
         ngay = st.date_input("Ngày mua", date.today())
     with col2:
-        loai = st.selectbox("Nguồn tiền", ["Tạm ứng", "Cá nhân"])
+        loai = st.selectbox("Hình thức thanh toán", ["Tiền mặt", "Chuyển khoản", "Quẹt thẻ", "Ghi nợ"])
 
     st.subheader("2. Chi tiết vật tư")
     df_vattu = pd.DataFrame([{'Tên vật tư': "", 'Quy cách': "Pcs", 'Số lượng': 0.0, 'Đơn giá': 0.0, 'Nơi mua': "", 'Ghi chú': ""}])
@@ -111,7 +110,7 @@ with tab1:
 
     btn_col1, btn_col2 = st.columns([3, 1])
     with btn_col1:
-        if st.button("🚀 LƯU DỮ LIỆU", type="primary", use_container_width=True):
+        if st.button("🚀 LƯU PHIẾU CHI", type="primary", use_container_width=True):
             valid_data = edited_df[edited_df['Tên vật tư'].str.strip() != ""].copy()
             if not valid_data.empty:
                 try:
@@ -120,8 +119,7 @@ with tab1:
                     tong_tien = (valid_data['Số lượng'] * valid_data['Đơn giá']).sum()
                     
                     now_vn = datetime.utcnow() + timedelta(hours=7)
-                    # 2. Tạo mã đơn: Thêm Giây (%S) vào cuối để đảm bảo dù bấm lưu liên tục cũng không bao giờ trùng mã
-                    trans_id = now_vn.strftime("TV%d%m%H%M%S")
+                    trans_id = now_vn.strftime("TV%d%m%H%M%S") # TV = Tiền Vật tư (Chi)
                     ws_trans.append_row([trans_id, ngay.strftime("%Y-%m-%d"), loai, tong_tien])
                     
                     mats_to_insert = []
@@ -132,9 +130,8 @@ with tab1:
                             row['Số lượng'], row['Đơn giá'], thanh_tien, str(row['Nơi mua']), str(row['Ghi chú'])
                         ])
                     ws_mats.append_rows(mats_to_insert)
-                    st.toast("Dữ liệu đã được bắn lên Google Sheets!", icon="🚀")
                     
-                    st.success(f"🎉 Đã lưu Online thành công! (Mã đơn: {trans_id})")
+                    st.success(f"🎉 Đã lưu phiếu chi thành công! (Mã: {trans_id})")
                     time.sleep(1.5)
                     st.session_state.form_key += 1
                     st.rerun()
@@ -144,70 +141,156 @@ with tab1:
                 st.warning("⚠️ Bạn chưa nhập 'Tên vật tư'.")
                 
     with btn_col2:
-        if st.button("🔄 LÀM MỚI BẢNG", use_container_width=True):
+        if st.button("🔄 LÀM MỚI BẢNG", use_container_width=True, key="reset_tab1"):
             st.session_state.form_key += 1
             st.rerun()
 
-# --- TAB 2: LỊCH SỬ ONLINE TỪ GOOGLE SHEETS ---
+# ==========================================
+# --- TAB 2: NGUỒN THU (VÀO QUỸ) ---
+# ==========================================
 with tab2:
-    st.subheader("🔍 Lấy dữ liệu trực tiếp từ máy chủ Google")
-    f_col1, f_col2 = st.columns(2)
+    st.subheader("💵 Cập nhật Nguồn Tiền Đầu Vào")
+    
+    with st.form("form_nhap_thu"):
+        col_t1, col_t2 = st.columns(2)
+        with col_t1:
+            ngay_thu = st.date_input("Ngày nhận tiền", date.today())
+            nguon_thu = st.selectbox("Phân loại nguồn tiền", ["Nguồn tiền cá nhân", "Ứng từ Công ty", "Mượn bạn bè/người thân", "Thu hồi công nợ", "Nguồn thu khác"])
+        with col_t2:
+            # Tận dụng hàm ép số của bạn để cho phép user gõ 15.000.000 thoải mái không sợ lỗi
+            so_tien_str = st.text_input("Số tiền nhận (VNĐ)", placeholder="Ví dụ: 15.000.000 hoặc 15000000")
+            ghi_chu_thu = st.text_input("Ghi chú chi tiết (Không bắt buộc)")
+            
+        submit_thu = st.form_submit_button("💾 LƯU NGUỒN THU", type="primary", use_container_width=True)
+        
+        if submit_thu:
+            so_tien_thu = clean_number(so_tien_str)
+            if so_tien_thu > 0:
+                try:
+                    now_vn = datetime.utcnow() + timedelta(hours=7)
+                    # Tạo mã TT (Tiền Thu) để phân biệt với mã TV (Tiền Vật tư - Chi)
+                    thu_id = now_vn.strftime("TT%d%m%H%M%S")
+                    ws_incomes.append_row([thu_id, ngay_thu.strftime("%Y-%m-%d"), nguon_thu, so_tien_thu, ghi_chu_thu])
+                    
+                    st.success(f"🎉 Đã lưu nguồn thu thành công! +{so_tien_thu:,.0f} ₫ (Mã: {thu_id})")
+                    time.sleep(1.5)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Có lỗi khi lưu nguồn thu: {e}")
+            else:
+                st.error("⚠️ Vui lòng nhập số tiền hợp lệ và lớn hơn 0.")
+
+# ==========================================
+# --- TAB 3: BẢNG THỐNG KÊ (THU CHI TỔNG HỢP) ---
+# ==========================================
+with tab2: # Giữ nguyên cấu trúc ẩn để code chạy độc lập tab, thực chất ở đây sửa thành "with tab3:"
+    pass # Bỏ qua để viết đúng chuẩn tab3 bên dưới
+
+with tab3:
+    st.subheader("🔍 Phân tích dòng tiền trực tiếp từ máy chủ Google")
+    f_col1, f_col2, f_col3 = st.columns([2, 2, 1])
     with f_col1:
         start_date = st.date_input("Từ ngày", date.today().replace(day=1))
     with f_col2:
         end_date = st.date_input("Đến ngày", date.today())
+    with f_col3:
+        st.write("") # Căn lót để nút bấm đều hàng với date input
+        st.write("")
+        if st.button("🔄 TẢI MỚI DỮ LIỆU", use_container_width=True):
+            st.cache_resource.clear()
+            st.rerun() 
     
     st.write("---")
-    if st.button("🔄 Tải Mới Dữ Liệu"):
-        st.cache_resource.clear()
-        st.rerun() 
-        
+    
     try:
+        # Tải dữ liệu từ 3 sheets
         trans_data = ws_trans.get_all_records()
         mats_data = ws_mats.get_all_records()
+        incomes_data = ws_incomes.get_all_records()
         
+        # 1. XỬ LÝ DỮ LIỆU CHI (EXPENSES)
+        tong_chi = 0
+        df_view_chi = pd.DataFrame()
         if trans_data and mats_data:
             df_trans = pd.DataFrame(trans_data)
             df_mats = pd.DataFrame(mats_data)
             
             ngay_col = next((c for c in df_trans.columns if c.strip().lower() == 'ngày'), None)
-            
             if ngay_col:
                 df_trans[ngay_col] = pd.to_datetime(df_trans[ngay_col]).dt.date
-                mask = (df_trans[ngay_col] >= start_date) & (df_trans[ngay_col] <= end_date)
-                df_trans_filtered = df_trans.loc[mask]
+                mask_chi = (df_trans[ngay_col] >= start_date) & (df_trans[ngay_col] <= end_date)
+                df_trans_filtered = df_trans.loc[mask_chi]
             else:
                 df_trans_filtered = df_trans
-            
+                
             if not df_trans_filtered.empty:
-                df_view = pd.merge(df_mats, df_trans_filtered, on='Mã Đơn', how='inner')
-                
-                # --- ÉP KIỂU SỐ CHO TOÀN BỘ CỘT TIỀN / SỐ LƯỢNG TRƯỚC KHI TÍNH TỔNG ---
-                for col in df_view.columns:
-                    col_lower = col.strip().lower()
-                    if col_lower in ['số lượng', 'đơn giá', 'thành tiền', 'tổng tiền']:
-                        df_view[col] = df_view[col].apply(clean_number)
-                # ----------------------------------------------------------------------
+                df_view_chi = pd.merge(df_mats, df_trans_filtered, on='Mã Đơn', how='inner')
+                for col in df_view_chi.columns:
+                    if col.strip().lower() in ['số lượng', 'đơn giá', 'thành tiền', 'tổng tiền']:
+                        df_view_chi[col] = df_view_chi[col].apply(clean_number)
+                        
+                tt_col = next((c for c in df_view_chi.columns if c.strip().lower() == 'thành tiền'), None)
+                if tt_col:
+                    tong_chi = df_view_chi[tt_col].sum()
 
-                thanh_tien_col = next((c for c in df_view.columns if c.strip().lower() == 'thành tiền'), None)
-                tong_chi = df_view[thanh_tien_col].sum() if thanh_tien_col else 0
+        # 2. XỬ LÝ DỮ LIỆU THU (INCOMES)
+        tong_thu = 0
+        df_view_thu = pd.DataFrame()
+        if incomes_data:
+            df_incomes = pd.DataFrame(incomes_data)
+            ngay_thu_col = next((c for c in df_incomes.columns if c.strip().lower() == 'ngày'), None)
+            tien_thu_col = next((c for c in df_incomes.columns if c.strip().lower() == 'số tiền'), None)
+            
+            if ngay_thu_col and tien_thu_col:
+                df_incomes[ngay_thu_col] = pd.to_datetime(df_incomes[ngay_thu_col]).dt.date
+                mask_thu = (df_incomes[ngay_thu_col] >= start_date) & (df_incomes[ngay_thu_col] <= end_date)
+                df_view_thu = df_incomes.loc[mask_thu].copy()
                 
-                m1, m2 = st.columns(2)
-                m1.metric(label="💰 TỔNG TIỀN ĐÃ CHI", value=f"{tong_chi:,.0f} ₫")
-                m2.metric(label="📦 TỔNG SỐ MÓN", value=f"{len(df_view)} món")
-                
-                col_config = {}
-                for c in df_view.columns:
-                    c_lower = c.strip().lower()
-                    if c_lower == 'số lượng': col_config[c] = st.column_config.NumberColumn(format="%,.1f")
-                    elif c_lower in ['đơn giá', 'thành tiền', 'tổng tiền']: col_config[c] = st.column_config.NumberColumn(format="%,.0f ₫")
-                
-                cols_to_drop = [c for c in ['id', 'ID', 'Trạng thái', 'Trạng Thái'] if c in df_view.columns]
-                df_display = df_view.drop(columns=cols_to_drop)
-                st.dataframe(df_display, use_container_width=True, column_config=col_config)
-            else:
-                st.info("Không có giao dịch nào.")
+                if not df_view_thu.empty:
+                    df_view_thu[tien_thu_col] = df_view_thu[tien_thu_col].apply(clean_number)
+                    tong_thu = df_view_thu[tien_thu_col].sum()
+
+        # 3. HIỂN THỊ METRICS (DASHBOARD TỔNG QUAN)
+        ton_quy = tong_thu - tong_chi
+        
+        st.markdown("### 🧮 BẢNG CÂN ĐỐI KẾ TOÁN")
+        m1, m2, m3 = st.columns(3)
+        m1.metric(label="📈 TỔNG THU (Nguồn tiền vào)", value=f"{tong_thu:,.0f} ₫")
+        m2.metric(label="📉 TỔNG CHI (Mua vật tư)", value=f"{tong_chi:,.0f} ₫")
+        
+        # Đổi màu hiển thị Tồn quỹ (Xanh nếu còn tiền, Đỏ nếu âm quỹ)
+        if ton_quy >= 0:
+            m3.metric(label="💰 TỒN QUỸ HIỆN TẠI", value=f"{ton_quy:,.0f} ₫", delta="Dương quỹ")
         else:
-            st.info("Trang tính đang trống.")
+            m3.metric(label="🚨 TỒN QUỸ HIỆN TẠI", value=f"{ton_quy:,.0f} ₫", delta="- Âm quỹ (Cần bù thêm)", delta_color="inverse")
+
+        st.write("---")
+        
+        # 4. BẢNG HIỂN THỊ CHI TIẾT DƯỚI DẠNG TAB CON
+        sub_tab1, sub_tab2 = st.tabs(["📝 Lịch sử Chi Tiền", "💵 Lịch sử Thu Tiền"])
+        
+        with sub_tab1:
+            if not df_view_chi.empty:
+                col_config_chi = {}
+                for c in df_view_chi.columns:
+                    c_lower = c.strip().lower()
+                    if c_lower == 'số lượng': col_config_chi[c] = st.column_config.NumberColumn(format="%,.1f")
+                    elif c_lower in ['đơn giá', 'thành tiền', 'tổng tiền']: col_config_chi[c] = st.column_config.NumberColumn(format="%,.0f ₫")
+                
+                cols_to_drop = [c for c in ['id', 'ID', 'Trạng thái', 'Trạng Thái'] if c in df_view_chi.columns]
+                st.dataframe(df_view_chi.drop(columns=cols_to_drop), use_container_width=True, column_config=col_config_chi)
+            else:
+                st.info("Không có dữ liệu mua vật tư trong khoảng thời gian này.")
+                
+        with sub_tab2:
+            if not df_view_thu.empty:
+                col_config_thu = {}
+                for c in df_view_thu.columns:
+                    if c.strip().lower() == 'số tiền':
+                        col_config_thu[c] = st.column_config.NumberColumn(format="%,.0f ₫")
+                st.dataframe(df_view_thu, use_container_width=True, column_config=col_config_thu)
+            else:
+                st.info("Không có dữ liệu nguồn thu trong khoảng thời gian này.")
+
     except Exception as e:
-        st.error(f"Lỗi tải dữ liệu: {e}")
+        st.error(f"Lỗi tải hoặc tính toán dữ liệu: {e}")
