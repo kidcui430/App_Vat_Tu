@@ -82,10 +82,10 @@ def clean_number(val):
     try: return float(val_str)
     except: return 0.0
 
-st.title("📦 App Mua Sắm Vật Tư (Test by T)")
+st.title("📦 App Quản Lý Vật Tư (Bản Online)")
 st.markdown("---")
 
-tab1, tab2 = st.tabs(["📝 Mua trong ngày", "📊 Bảng Thống Kê"])
+tab1, tab2 = st.tabs(["📝 Nhập Hàng Mới", "📊 Lịch Sử Trực Tuyến"])
 
 # --- TAB 1: NHẬP ĐƠN HÀNG MỚI ---
 with tab1:
@@ -132,9 +132,9 @@ with tab1:
                             row['Số lượng'], row['Đơn giá'], thanh_tien, str(row['Nơi mua']), str(row['Ghi chú'])
                         ])
                     ws_mats.append_rows(mats_to_insert)
-                    st.toast("Tải lên Google Sheets OK!", icon="🚀")
+                    st.toast("Dữ liệu đã được bắn lên Google Sheets!", icon="🚀")
                     
-                    st.success(f"🎉 Đã lưu thành công! (Mã đơn: {trans_id})")
+                    st.success(f"🎉 Đã lưu Online thành công! (Mã đơn: {trans_id})")
                     time.sleep(1.5)
                     st.session_state.form_key += 1
                     st.rerun()
@@ -210,5 +210,4 @@ with tab2:
         else:
             st.info("Trang tính đang trống.")
     except Exception as e:
-
         st.error(f"Lỗi tải dữ liệu: {e}")
