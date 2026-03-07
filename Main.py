@@ -78,11 +78,11 @@ def clean_number(val):
     try: return float(val_str)
     except: return 0.0
 
-st.title("📦 App Quản Lý Thu - Chi Vật Tư")
+st.title("📦 App THU VÀ CHI (TEST BY T)")
 st.markdown("---")
 
 # CHIA THÀNH 3 TAB ĐỂ QUẢN LÝ CHUYÊN NGHIỆP HƠN
-tab1, tab2, tab3 = st.tabs(["📝 Lập Phiếu Chi (Mua hàng)", "💵 Nhập Nguồn Thu (Vào quỹ)", "📊 Báo Cáo Dòng Tiền"])
+tab1, tab2, tab3 = st.tabs(["📝 MUA VẬT TƯ", "💵 THU TIỀN", "📊 BẢNG TỔNG KẾT"])
 
 # ==========================================
 # --- TAB 1: NHẬP ĐƠN HÀNG MỚI (CHI) ---
@@ -93,7 +93,7 @@ with tab1:
     with col1:
         ngay = st.date_input("Ngày mua", date.today())
     with col2:
-        loai = st.selectbox("Hình thức thanh toán", ["Tiền mặt", "Chuyển khoản", "Quẹt thẻ", "Ghi nợ"])
+        loai = st.selectbox("Hình thức thanh toán", ["Tiền mặt", "Chuyển khoản"])
 
     st.subheader("2. Chi tiết vật tư")
     df_vattu = pd.DataFrame([{'Tên vật tư': "", 'Quy cách': "Pcs", 'Số lượng': 0.0, 'Đơn giá': 0.0, 'Nơi mua': "", 'Ghi chú': ""}])
@@ -102,7 +102,7 @@ with tab1:
         df_vattu, num_rows="dynamic", use_container_width=True, key=f"editor_{st.session_state.form_key}",
         column_config={
             "Tên vật tư": st.column_config.TextColumn("Tên vật tư", required=True),
-            "Quy cách": st.column_config.SelectboxColumn("Quy cách", options=["Pcs", "KG", "Con", "Cái", "Bộ", "Mét", "Lít", "Hộp", "Thùng", "Cuộn", "Tấm", "Cặp", "Bao"], required=True),
+            "Quy cách": st.column_config.SelectboxColumn("Quy cách", options=["Pcs", "KG", "Con", "Cái", "Bộ", "Mét", "Lít", "Hộp", "Thùng", "Cuộn", "Tấm", "Ly", "Bao"], required=True),
             "Số lượng": st.column_config.NumberColumn("Số lượng", format="%,.1f", min_value=0.0),
             "Đơn giá": st.column_config.NumberColumn("Đơn giá", format="%,.0f", min_value=0.0),
         }
@@ -110,7 +110,7 @@ with tab1:
 
     btn_col1, btn_col2 = st.columns([3, 1])
     with btn_col1:
-        if st.button("🚀 LƯU PHIẾU CHI", type="primary", use_container_width=True):
+        if st.button("🚀 LƯU ĐÃ MUA", type="primary", use_container_width=True):
             valid_data = edited_df[edited_df['Tên vật tư'].str.strip() != ""].copy()
             if not valid_data.empty:
                 try:
@@ -155,13 +155,13 @@ with tab2:
         col_t1, col_t2 = st.columns(2)
         with col_t1:
             ngay_thu = st.date_input("Ngày nhận tiền", date.today())
-            nguon_thu = st.selectbox("Phân loại nguồn tiền", ["Nguồn tiền cá nhân", "Ứng từ Công ty", "Mượn bạn bè/người thân", "Thu hồi công nợ", "Nguồn thu khác"])
+            nguon_thu = st.selectbox("Phân loại nguồn tiền", ["Nguồn tiền cá nhân", "Ứng từ Công ty", "Mượn bạn bè/người thân", "Nguồn thu khác"])
         with col_t2:
             # Tận dụng hàm ép số của bạn để cho phép user gõ 15.000.000 thoải mái không sợ lỗi
             so_tien_str = st.text_input("Số tiền nhận (VNĐ)", placeholder="Ví dụ: 15.000.000 hoặc 15000000")
             ghi_chu_thu = st.text_input("Ghi chú chi tiết (Không bắt buộc)")
             
-        submit_thu = st.form_submit_button("💾 LƯU NGUỒN THU", type="primary", use_container_width=True)
+        submit_thu = st.form_submit_button("💾 LƯU TIỀN THU", type="primary", use_container_width=True)
         
         if submit_thu:
             so_tien_thu = clean_number(so_tien_str)
@@ -253,7 +253,7 @@ with tab3:
         # 3. HIỂN THỊ METRICS (DASHBOARD TỔNG QUAN)
         ton_quy = tong_thu - tong_chi
         
-        st.markdown("### 🧮 BẢNG CÂN ĐỐI KẾ TOÁN")
+        st.markdown("### 🧮 BẢNG TỔNG KẾT")
         m1, m2, m3 = st.columns(3)
         m1.metric(label="📈 TỔNG THU (Nguồn tiền vào)", value=f"{tong_thu:,.0f} ₫")
         m2.metric(label="📉 TỔNG CHI (Mua vật tư)", value=f"{tong_chi:,.0f} ₫")
@@ -293,4 +293,5 @@ with tab3:
                 st.info("Không có dữ liệu nguồn thu trong khoảng thời gian này.")
 
     except Exception as e:
+
         st.error(f"Lỗi tải hoặc tính toán dữ liệu: {e}")
