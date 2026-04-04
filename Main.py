@@ -108,6 +108,17 @@ with tab1:
         }
     )
 
+    # TỰ ĐỘNG TÍNH TOÁN THÀNH TIỀN VÀ TỔNG CỘNG ĐỂ HIỂN THỊ TRỰC QUAN
+    calc_df = edited_df.copy()
+    calc_df['Số lượng'] = calc_df['Số lượng'].apply(clean_number)
+    calc_df['Đơn giá'] = calc_df['Đơn giá'].apply(clean_number)
+    calc_df['Thành tiền'] = calc_df['Số lượng'] * calc_df['Đơn giá']
+    tong_tien_hien_tai = calc_df['Thành tiền'].sum()
+
+    if tong_tien_hien_tai > 0:
+        st.info(f"### 🛒 TỔNG TIỀN PHIẾU CHI: **{tong_tien_hien_tai:,.0f} VNĐ**")
+
+    st.write("") # Tạo khoảng trắng
     btn_col1, btn_col2 = st.columns([3, 1])
     with btn_col1:
         if st.button("🚀 LƯU ĐÃ MUA", type="primary", use_container_width=True):
@@ -157,9 +168,13 @@ with tab2:
             ngay_thu = st.date_input("Ngày nhận tiền", date.today())
             nguon_thu = st.selectbox("Phân loại nguồn tiền", ["Nguồn tiền cá nhân", "Ứng từ Công ty", "Mượn bạn bè/người thân", "Nguồn thu khác"])
         with col_t2:
-            # Tận dụng hàm ép số của bạn để cho phép user gõ 15.000.000 thoải mái không sợ lỗi
-            so_tien_str = st.text_input("Số tiền nhận (VNĐ)", placeholder="Ví dụ: 15.000.000 hoặc 15000000")
+            so_tien_str = st.text_input("Số tiền nhận (VNĐ)", placeholder="Ví dụ: 15000000 hoặc 15.000.000")
             ghi_chu_thu = st.text_input("Ghi chú chi tiết (Không bắt buộc)")
+            
+            # ĐỊNH DẠNG HIỂN THỊ SỐ TIỀN THỰC TẾ TRỰC QUAN 
+            so_tien_hien_thi = clean_number(so_tien_str)
+            if so_tien_hien_thi > 0:
+                st.caption(f"✨ Số tiền sẽ lưu: **{so_tien_hien_thi:,.0f} VNĐ**")
             
         submit_thu = st.form_submit_button("💾 LƯU TIỀN THU", type="primary", use_container_width=True)
         
@@ -168,7 +183,6 @@ with tab2:
             if so_tien_thu > 0:
                 try:
                     now_vn = datetime.utcnow() + timedelta(hours=7)
-                    # Tạo mã TT (Tiền Thu) để phân biệt với mã TV (Tiền Vật tư - Chi)
                     thu_id = now_vn.strftime("TT%d%m%H%M%S")
                     ws_incomes.append_row([thu_id, ngay_thu.strftime("%Y-%m-%d"), nguon_thu, so_tien_thu, ghi_chu_thu])
                     
@@ -183,9 +197,6 @@ with tab2:
 # ==========================================
 # --- TAB 3: BẢNG THỐNG KÊ (THU CHI TỔNG HỢP) ---
 # ==========================================
-with tab2: # Giữ nguyên cấu trúc ẩn để code chạy độc lập tab, thực chất ở đây sửa thành "with tab3:"
-    pass # Bỏ qua để viết đúng chuẩn tab3 bên dưới
-
 with tab3:
     st.subheader("🔍 Phân tích dòng tiền trực tiếp từ máy chủ Google")
     f_col1, f_col2, f_col3 = st.columns([2, 2, 1])
@@ -203,12 +214,11 @@ with tab3:
     st.write("---")
     
     try:
-        # Tải dữ liệu từ 3 sheets
         trans_data = ws_trans.get_all_records()
         mats_data = ws_mats.get_all_records()
         incomes_data = ws_incomes.get_all_records()
         
-        # 1. XỬ LÝ DỮ LIỆU CHI (EXPENSES)
+        # 1. XỬ LÝ DỮ LIỆU CHI
         tong_chi = 0
         df_view_chi = pd.DataFrame()
         if trans_data and mats_data:
@@ -233,7 +243,7 @@ with tab3:
                 if tt_col:
                     tong_chi = df_view_chi[tt_col].sum()
 
-        # 2. XỬ LÝ DỮ LIỆU THU (INCOMES)
+        # 2. XỬ LÝ DỮ LIỆU THU
         tong_thu = 0
         df_view_thu = pd.DataFrame()
         if incomes_data:
@@ -250,7 +260,7 @@ with tab3:
                     df_view_thu[tien_thu_col] = df_view_thu[tien_thu_col].apply(clean_number)
                     tong_thu = df_view_thu[tien_thu_col].sum()
 
-        # 3. HIỂN THỊ METRICS (DASHBOARD TỔNG QUAN)
+        # 3. HIỂN THỊ METRICS
         ton_quy = tong_thu - tong_chi
         
         st.markdown("### 🧮 BẢNG TỔNG KẾT")
@@ -258,7 +268,6 @@ with tab3:
         m1.metric(label="📈 TỔNG THU (Nguồn tiền vào)", value=f"{tong_thu:,.0f} ₫")
         m2.metric(label="📉 TỔNG CHI (Mua vật tư)", value=f"{tong_chi:,.0f} ₫")
         
-        # Đổi màu hiển thị Tồn quỹ (Xanh nếu còn tiền, Đỏ nếu âm quỹ)
         if ton_quy >= 0:
             m3.metric(label="💰 TỒN QUỸ HIỆN TẠI", value=f"{ton_quy:,.0f} ₫", delta="Dương quỹ")
         else:
@@ -266,7 +275,7 @@ with tab3:
 
         st.write("---")
         
-        # 4. BẢNG HIỂN THỊ CHI TIẾT DƯỚI DẠNG TAB CON
+        # 4. BẢNG HIỂN THỊ CHI TIẾT
         sub_tab1, sub_tab2 = st.tabs(["📝 Lịch sử Chi Tiền", "💵 Lịch sử Thu Tiền"])
         
         with sub_tab1:
@@ -293,5 +302,4 @@ with tab3:
                 st.info("Không có dữ liệu nguồn thu trong khoảng thời gian này.")
 
     except Exception as e:
-
         st.error(f"Lỗi tải hoặc tính toán dữ liệu: {e}")
